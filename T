@@ -88,3 +88,36 @@ df_result = forward_triangle_ema(df, window_size)
 
 # Display the DataFrame
 tools.display_dataframe_to_user(name="Forward Triangular EMA", dataframe=df_result)
+
+import pandas as pd
+import numpy as np
+import ace_tools as tools  # For displaying data
+
+# Sample Data
+data = {
+    'date': pd.date_range(start='2023-01-01', periods=20, freq='D'),
+    'id': np.repeat([1, 2], 10),
+    'perf1d': np.random.randn(20)  # Random performance values
+}
+df = pd.DataFrame(data)
+
+# Define Function to Compute Weighted Scalar Product
+def weighted_scalar_product(series, half_life):
+    if len(series) == 0:
+        return np.nan  # Handle empty cases
+    
+    # Compute weights with log-space exponential decay
+    weights = np.logspace(0, -len(series) + 1, num=len(series), base=np.exp(-1 / half_life))
+    weights /= weights.sum()  # Normalize
+    
+    # Compute scalar product
+    return np.dot(series.values[::-1], weights)  # Reverse to give more weight to recent values
+
+# Parameters
+half_life = 3  # Half-life decay rate
+
+# Apply Transform with Expanding Window
+df['wema_expanding'] = df.groupby('id')['perf1d'].transform(lambda x: x.expanding().apply(weighted_scalar_product, args=(half_life,), raw=True))
+
+# Display the DataFrame
+tools.display_dataframe_to_user(name="WEMA with Expanding Transform", dataframe=df)
