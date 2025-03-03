@@ -45,3 +45,46 @@ df_with_tema = create_grouped_triangular_ema(df, "id", columns_to_apply, window_
 
 import ace_tools as tools
 tools.display_dataframe_to_user(name="DataFrame with Grouped Triangular EMA", dataframe=df_with_tema)
+
+
+
+import pandas as pd
+import numpy as np
+import ace_tools as tools  # For displaying data
+
+# Sample Data (Replace with your actual DataFrame)
+data = {
+    'date': pd.date_range(start='2024-01-01', periods=20, freq='D'),
+    'id': np.repeat([1, 2], 10),
+    'perf1d': np.random.randn(20)  # Random performance values
+}
+df = pd.DataFrame(data)
+
+# Define the Forward Triangular EMA function
+def forward_triangle_ema(df, window):
+    df = df.copy()
+    
+    # Generate linear weights (triangle shape)
+    weights = np.linspace(1, 0, window)  # Decreasing linear weights
+    weights /= weights.sum()  # Normalize to sum to 1
+    
+    # Rolling apply within each group
+    def weighted_avg(series):
+        if len(series) < window:
+            return np.nan  # Avoid short windows at start
+        return np.dot(series, weights)
+
+    df['forward_ema'] = (
+        df.groupby('id')['perf1d']
+        .apply(lambda x: x.shift(-window + 1).rolling(window).apply(weighted_avg, raw=True))
+        .reset_index(level=0, drop=True)
+    )
+
+    return df
+
+# Apply function with a chosen window size
+window_size = 5
+df_result = forward_triangle_ema(df, window_size)
+
+# Display the DataFrame
+tools.display_dataframe_to_user(name="Forward Triangular EMA", dataframe=df_result)
