@@ -121,3 +121,36 @@ df['wema_expanding'] = df.groupby('id')['perf1d'].transform(lambda x: x.expandin
 
 # Display the DataFrame
 tools.display_dataframe_to_user(name="WEMA with Expanding Transform", dataframe=df)
+
+
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+def orthogonalize_target(df, date_col, target_1, target_2):
+    """
+    Orthogonalizes daily target_1 with respect to target_2.
+
+    Parameters:
+    df (pd.DataFrame): DataFrame containing the dataset.
+    date_col (str): Column name for date.
+    target_1 (str): Column name for target 1 (dependent variable).
+    target_2 (str): Column name for target 2 (independent variable).
+
+    Returns:
+    pd.DataFrame: DataFrame with an additional column for the orthogonalized target_1.
+    """
+    df = df.copy()
+    df["target_1_orthogonal"] = np.nan
+
+    for date, group in df.groupby(date_col):
+        if len(group) > 1:  # Perform regression only if there are multiple observations
+            X = group[[target_2]].values
+            y = group[target_1].values
+            model = LinearRegression().fit(X, y)
+            residuals = y - model.predict(X)
+            df.loc[group.index, "target_1_orthogonal"] = residuals
+        else:
+            df.loc[group.index, "target_1_orthogonal"] = group[target_1].values  # No change if only one sample
+
+    return df
