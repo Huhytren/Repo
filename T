@@ -154,3 +154,33 @@ def orthogonalize_target(df, date_col, target_1, target_2):
             df.loc[group.index, "target_1_orthogonal"] = group[target_1].values  # No change if only one sample
 
     return df
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+
+def orthogonalize_target(df, date_col, target_1, target_2):
+    """
+    Orthogonalizes daily target_1 with respect to target_2.
+
+    Parameters:
+    df (pd.DataFrame): DataFrame containing the dataset.
+    date_col (str): Column name for date.
+    target_1 (str): Column name for target 1 (dependent variable).
+    target_2 (str): Column name for target 2 (independent variable).
+
+    Returns:
+    pd.DataFrame: DataFrame with an additional column for the orthogonalized target_1.
+    """
+    df = df.copy()
+    
+    def orthogonalize(group):
+        if len(group) > 1:
+            X = group[[target_2]].values
+            y = group[target_1].values
+            model = LinearRegression().fit(X, y)
+            return y - model.predict(X)
+        return group[target_1]  # No change if only one observation
+    
+    df["target_1_orthogonal"] = df.groupby(date_col)[[target_1, target_2]].transform(orthogonalize)
+    
+    return df
