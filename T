@@ -1,186 +1,127 @@
-import numpy as np
-import pandas as pd
+Voici une explication détaillée ligne par ligne de la fonction approximate_interactions dans shap.utils._general.py.
 
-def create_grouped_triangular_ema(df, id_column, columns, window):
-    """
-    Computes a Triangular Exponential Moving Average (TEMA) per group.
 
-    Parameters:
-    - df: pandas DataFrame with a DateTime column and an ID column.
-    - id_column: column name representing the unique ID per group.
-    - columns: list of column names to apply TEMA.
-    - window: the length of the moving window (e.g., 5).
+---
 
-    Returns:
-    - df: DataFrame with additional TEMA columns.
-    """
-    df = df.copy()
-    
-    # Create triangular weights (e.g., [0.2, 0.4, 0.6, 0.8, 1.0] for window=5)
-    weights = np.linspace(1, window, window)
-    weights /= weights.sum()  # Normalize weights to sum to 1
+Code source de la fonction
 
-    for col in columns:
-        df[f"{col}_tema{window}"] = df.groupby(id_column)[col].transform(
-            lambda x: x.rolling(window).apply(lambda y: np.dot(y, weights) if len(y) == window else np.nan, raw=True)
-        )
-    
-    return df
+def approximate_interactions(index, shap_values, X):
+    inds = np.arange(X.shape[1])  # Crée un tableau contenant les indices des caractéristiques
+    inds = inds[inds != index]  # Supprime l'indice de la caractéristique cible (index)
 
-# Example Usage:
-df = pd.DataFrame({
-    "date": pd.date_range(start="2024-01-01", periods=10, freq="D").tolist() * 2,  # Two IDs
-    "id": ["A"] * 10 + ["B"] * 10,
-    "price": [10, 12, 14, 13, 15, 17, 16, 18, 20, 19] * 2,
-    "volume": [100, 120, 150, 130, 170, 180, 175, 190, 200, 210] * 2
-})
+    interaction_strength = np.zeros(X.shape[1] - 1)  # Initialise un tableau pour stocker l'importance des interactions
 
-df.set_index(["date", "id"], inplace=True)  # Composite key
+    for i, ind in enumerate(inds):  # Parcourt toutes les caractéristiques sauf celle ciblée
+        interaction_strength[i] = np.abs(np.cov(shap_values[:, index], shap_values[:, ind])[0, 1])  
+        # Calcule la covariance entre les valeurs SHAP de la caractéristique cible et celles d'une autre caractéristique
+        # Prend la valeur absolue pour mesurer la force de l'interaction
 
-# Apply the function for a 5-day triangular EMA
-columns_to_apply = ["price", "volume"]
-window_size = 5
+    interaction_inds = np.argsort(-interaction_strength)  # Trie les indices en fonction de l'importance des interactions (ordre décroissant)
 
-df_with_tema = create_grouped_triangular_ema(df, "id", columns_to_apply, window_size)
+    return inds[interaction_inds]  # Retourne les indices des caractéristiques les plus interactives
 
-import ace_tools as tools
-tools.display_dataframe_to_user(name="DataFrame with Grouped Triangular EMA", dataframe=df_with_tema)
+
+---
+
+Explication ligne par ligne
+
+1. Création d'une liste d'indices des caractéristiques
+
+inds = np.arange(X.shape[1])
+
+X.shape[1] est le nombre total de caractéristiques dans les données.
+
+np.arange(X.shape[1]) crée un tableau contenant les indices [0, 1, 2, ..., n_features - 1].
 
 
 
-import pandas as pd
-import numpy as np
-import ace_tools as tools  # For displaying data
+2. Suppression de l'indice de la caractéristique cible
 
-# Sample Data (Replace with your actual DataFrame)
-data = {
-    'date': pd.date_range(start='2024-01-01', periods=20, freq='D'),
-    'id': np.repeat([1, 2], 10),
-    'perf1d': np.random.randn(20)  # Random performance values
-}
-df = pd.DataFrame(data)
+inds = inds[inds != index]
 
-# Define the Forward Triangular EMA function
-def forward_triangle_ema(df, window):
-    df = df.copy()
-    
-    # Generate linear weights (triangle shape)
-    weights = np.linspace(1, 0, window)  # Decreasing linear weights
-    weights /= weights.sum()  # Normalize to sum to 1
-    
-    # Rolling apply within each group
-    def weighted_avg(series):
-        if len(series) < window:
-            return np.nan  # Avoid short windows at start
-        return np.dot(series, weights)
+Ici, on enlève index, qui est l'indice de la caractéristique cible.
 
-    df['forward_ema'] = (
-        df.groupby('id')['perf1d']
-        .apply(lambda x: x.shift(-window + 1).rolling(window).apply(weighted_avg, raw=True))
-        .reset_index(level=0, drop=True)
-    )
-
-    return df
-
-# Apply function with a chosen window size
-window_size = 5
-df_result = forward_triangle_ema(df, window_size)
-
-# Display the DataFrame
-tools.display_dataframe_to_user(name="Forward Triangular EMA", dataframe=df_result)
-
-import pandas as pd
-import numpy as np
-import ace_tools as tools  # For displaying data
-
-# Sample Data
-data = {
-    'date': pd.date_range(start='2023-01-01', periods=20, freq='D'),
-    'id': np.repeat([1, 2], 10),
-    'perf1d': np.random.randn(20)  # Random performance values
-}
-df = pd.DataFrame(data)
-
-# Define Function to Compute Weighted Scalar Product
-def weighted_scalar_product(series, half_life):
-    if len(series) == 0:
-        return np.nan  # Handle empty cases
-    
-    # Compute weights with log-space exponential decay
-    weights = np.logspace(0, -len(series) + 1, num=len(series), base=np.exp(-1 / half_life))
-    weights /= weights.sum()  # Normalize
-    
-    # Compute scalar product
-    return np.dot(series.values[::-1], weights)  # Reverse to give more weight to recent values
-
-# Parameters
-half_life = 3  # Half-life decay rate
-
-# Apply Transform with Expanding Window
-df['wema_expanding'] = df.groupby('id')['perf1d'].transform(lambda x: x.expanding().apply(weighted_scalar_product, args=(half_life,), raw=True))
-
-# Display the DataFrame
-tools.display_dataframe_to_user(name="WEMA with Expanding Transform", dataframe=df)
+Par exemple, si index = 2 et X.shape[1] = 5, alors inds devient [0, 1, 3, 4].
 
 
-import pandas as pd
-import numpy as np
-from sklearn.linear_model import LinearRegression
 
-def orthogonalize_target(df, date_col, target_1, target_2):
-    """
-    Orthogonalizes daily target_1 with respect to target_2.
+3. Initialisation du tableau de force d'interaction
 
-    Parameters:
-    df (pd.DataFrame): DataFrame containing the dataset.
-    date_col (str): Column name for date.
-    target_1 (str): Column name for target 1 (dependent variable).
-    target_2 (str): Column name for target 2 (independent variable).
+interaction_strength = np.zeros(X.shape[1] - 1)
 
-    Returns:
-    pd.DataFrame: DataFrame with an additional column for the orthogonalized target_1.
-    """
-    df = df.copy()
-    df["target_1_orthogonal"] = np.nan
+On initialise un tableau pour stocker la force d'interaction entre index et chaque autre caractéristique.
 
-    for date, group in df.groupby(date_col):
-        if len(group) > 1:  # Perform regression only if there are multiple observations
-            X = group[[target_2]].values
-            y = group[target_1].values
-            model = LinearRegression().fit(X, y)
-            residuals = y - model.predict(X)
-            df.loc[group.index, "target_1_orthogonal"] = residuals
-        else:
-            df.loc[group.index, "target_1_orthogonal"] = group[target_1].values  # No change if only one sample
+La taille de ce tableau est X.shape[1] - 1 car on a retiré une caractéristique.
 
-    return df
-import numpy as np
-import pandas as pd
-from sklearn.linear_model import LinearRegression
 
-def orthogonalize_target(df, date_col, target_1, target_2):
-    """
-    Orthogonalizes daily target_1 with respect to target_2.
 
-    Parameters:
-    df (pd.DataFrame): DataFrame containing the dataset.
-    date_col (str): Column name for date.
-    target_1 (str): Column name for target 1 (dependent variable).
-    target_2 (str): Column name for target 2 (independent variable).
+4. Boucle pour calculer la force d'interaction
 
-    Returns:
-    pd.DataFrame: DataFrame with an additional column for the orthogonalized target_1.
-    """
-    df = df.copy()
-    
-    def orthogonalize(group):
-        if len(group) > 1:
-            X = group[[target_2]].values
-            y = group[target_1].values
-            model = LinearRegression().fit(X, y)
-            return y - model.predict(X)
-        return group[target_1]  # No change if only one observation
-    
-    df["target_1_orthogonal"] = df.groupby(date_col)[[target_1, target_2]].transform(orthogonalize)
-    
-    return df
+for i, ind in enumerate(inds):
+
+On parcourt les indices des autres caractéristiques (celles qui ne sont pas index).
+
+
+
+5. Calcul de la force d'interaction
+
+interaction_strength[i] = np.abs(np.cov(shap_values[:, index], shap_values[:, ind])[0, 1])
+
+shap_values[:, index] : Extrait les valeurs SHAP de la caractéristique cible.
+
+shap_values[:, ind] : Extrait les valeurs SHAP d'une autre caractéristique.
+
+np.cov(...)[0, 1] : Calcule la covariance entre ces deux séries.
+
+np.abs(...) : Prend la valeur absolue de la covariance pour mesurer la force de l'interaction.
+
+
+
+6. Tri des indices par force d'interaction décroissante
+
+interaction_inds = np.argsort(-interaction_strength)
+
+np.argsort(-interaction_strength) trie les indices en fonction de la force d'interaction en ordre décroissant.
+
+Le - est utilisé pour inverser l'ordre naturel du tri (qui est croissant par défaut).
+
+
+
+7. Retour des indices des caractéristiques les plus interactives
+
+return inds[interaction_inds]
+
+interaction_inds contient les indices triés selon la force d'interaction.
+
+inds[interaction_inds] renvoie ces indices dans l'ordre de leur importance.
+
+
+
+
+
+---
+
+Exemple d'exécution
+
+Si nous avons ces valeurs SHAP :
+
+Et que nous appelons :
+
+approximate_interactions(0, shap_values, X)
+
+La fonction retournera une liste triée des indices des caractéristiques les plus interactives avec Feature 1.
+
+
+---
+
+Résumé
+
+Cette fonction cherche à identifier les interactions les plus importantes entre les caractéristiques en analysant la covariance des valeurs SHAP.
+
+Elle exclut la caractéristique cible (index) et calcule la covariance entre ses valeurs SHAP et celles des autres.
+
+Elle trie ensuite ces interactions et retourne les indices correspondants.
+
+
+C'est une méthode efficace pour détecter quelles caractéristiques influencent conjointement les prédictions d'un modèle de Machine Learning.
+
